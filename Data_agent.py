@@ -50,7 +50,7 @@ with st.sidebar:
         st.rerun()
 
 # --- 3. Main Interface ---
-st.title("🤖 Data Cleaning Agent (v2.5)")
+st.title("🤖 Data Cleaning Agent")
 st.caption("Powered by Gemini 2.5 Flash - Supporting deep logic and structured cleaning")
 
 for msg in st.session_state.messages:
@@ -84,21 +84,24 @@ if user_input := st.chat_input("Enter cleaning instructions (e.g., 'drop rows wh
                         data_info = "No file loaded. Parse data from user input text if applicable."
 
                     prompt = f"""
-                    You are a Senior Data Scientist at Texas Tech University. 
-                    Background Data Info: {data_info}
-                    Target Instruction: '''{user_input}'''
+                    You are an expert Data Scientist. Current data sample:
+                    {data_info}
 
-                    STRICT RULES FOR CODE GENERATION:
-                    1. DO NOT OVERWRITE valid existing data.
-                    2. For 'Date_Joined': 
-                       - Use `pd.to_datetime(df['Date_Joined'], errors='coerce', dayfirst=False)`
-                       - If that fails, try `pd.to_datetime(df['Date_Joined'].str.replace('.', '/', regex=False), errors='coerce')`
-                       - ONLY fill NaT (missing values) with '2026-01-01' AFTER attempting conversions.
-                    3. For 'Age': 
-                       - DO NOT drop rows unless specifically asked or if they are mathematically impossible (e.g., negative).
-                    4. If you use `dropna()`, ensure it doesn't accidentally wipe the whole table.
-                    5. Provide ONLY the Python code, NO conversational text.
+                    The user wants to: '''{user_input}'''
+
+                    STRICT RULES (Violating these will break the research):
+                    1. **NO DATA LOSS**: Do NOT use `dropna()` or any logic that removes rows unless the user explicitly said "delete rows".
+                    2. **DATE PARSING**: 
+                       - '2026.02.15' must be parsed as Feb 15, 2026.
+                       - '01/05/2026' must be parsed as May 1, 2026.
+                       - Use `pd.to_datetime(df['Date_Joined'], errors='coerce')`. 
+                       - ONLY for those that remain NaT, keep them as is or fill with '2026-01-01'.
+                    3. **OUTPUT**: Return ONLY Python code using 'df'. No explanation.
                     """
+                    # 利用 Gemini 2.5 的 thinking 能力进行生成
+                    response = model.generate_content(prompt)
+                    clean_code = re.sub(r'```python|```', '', response.text).strip()
+
 
                     # Generate content using Gemini 2.5
                     response = model.generate_content(prompt)
