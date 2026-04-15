@@ -84,21 +84,28 @@ if user_input := st.chat_input("Enter cleaning instructions (e.g., 'drop rows wh
                         data_info = "No file loaded. Parse data from user input text if applicable."
 
                     prompt = f"""
-                    You are an expert Data Scientist. Current data sample:
-                    {data_info}
+                    You are a Professional Data Engineering Agent. 
+                    Dataset Summary: {data_info}
+                    User Request: '''{user_input}'''
 
-                    The user wants to: '''{user_input}'''
+                    --- TASK CATEGORIES ---
+                    You specialize in:
+                    1. AUDIT: Statistical summaries, missing value/outlier detection (Z-score, IQR), redundancy checks.
+                    2. CLEAN: Handling nulls (mean/median/mode/drop), text normalization (HTML, special chars, casing), inconsistent encoding.
+                    3. STANDARDIZE: Date/Time unification (YYYY-MM-DD), unit conversion, column renaming.
+                    4. FEATURE: Binning, one-hot encoding, creating missing-indicators.
+                    5. REPORT: Summarizing changes and reporting data quality metrics.
 
-                    STRICT RULES (Violating these will break the research):
-                    1. **NO DATA LOSS**: Do NOT use `dropna()` or any logic that removes rows unless the user explicitly said "delete rows".
-                    2. **DATE PARSING**: 
-                       - '2026.02.15' must be parsed as Feb 15, 2026.
-                       - '01/05/2026' must be parsed as May 1, 2026.
-                       - Use `pd.to_datetime(df['Date_Joined'], errors='coerce')`. 
-                       - ONLY for those that remain NaT, keep them as is or fill with '2026-01-01'.
-                    3. **OUTPUT**: Return ONLY Python code using 'df'. No explanation.
+                    --- SYSTEM RULES ---
+                    - IF the request is NOT about data cleaning, analysis, or transformation, output ONLY the string: [REJECT].
+                    - Use `pd.to_datetime(errors='coerce')` for dates and `pd.to_numeric(errors='coerce')` for numbers.
+                    - Ensure the final result is assigned to the variable `df`.
+                    - Output ONLY pure Python code. No preamble, no explanation.
+
+                    --- EXECUTION LOGIC ---
+                    If the request is valid, generate efficient, error-resistant Python code to fulfill it.
                     """
-                    # 利用 Gemini 2.5 的 thinking 能力进行生成
+                   
                     response = model.generate_content(prompt)
                     clean_code = re.sub(r'```python|```', '', response.text).strip()
 
