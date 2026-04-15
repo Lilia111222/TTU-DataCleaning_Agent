@@ -1,163 +1,153 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import google.generativeai as genai
 import io
 import re
 
-st.set_page_config(page_title="Data Cleaning AI Agent", layout="wide")
+# Page Configuration
+st.set_page_config(page_title="AI Data Cleaning Agent", layout="wide")
 
-# --- 1. Initialization ---
-if "df" not in st.session_state:
-    st.session_state.df = None
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# --- 1. Configuration & API Setup ---
+api_key = st.secrets.get("GEMINI_API_KEY")
 
-# --- 2. Side panel: Settings and uploads ---
+# --- 2. Sidebar: Data Source & Control ---
 with st.sidebar:
-    st.title("⚙️ Data Source Settings")
-
-    # Core: Read Key from secrets
-    api_key = st.secrets.get("GEMINI_API_KEY")
-
+    st.title("⚙️ Control Center")
     if api_key:
-        # Using REST transport protocol for compatibility
+        # Configuring Gemini with REST transport for better compatibility
         genai.configure(api_key=api_key, transport='rest')
-        has_api = True
-        st.success(f"✅ API Connected (Key: {api_key[:4]}...)")
+        st.success("✅ API Connected")
     else:
-        st.error("❌ GEMINI_API_KEY not found in secrets.toml")
-        has_api = False
+        st.error("❌ API Key Missing in Secrets")
 
     st.divider()
     uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
     
     if uploaded_file:
-        if st.session_state.df is None or (
-                hasattr(uploaded_file, 'name') and uploaded_file.name != st.session_state.get('last_file')):
+        # Load file into session state to maintain data across interactions
+        if "df" not in st.session_state or st.sidebar.button("Reload Original File"):
             try:
                 if uploaded_file.name.endswith('.csv'):
                     st.session_state.df = pd.read_csv(uploaded_file)
                 else:
                     st.session_state.df = pd.read_excel(uploaded_file)
-                st.session_state.last_file = uploaded_file.name
-                st.toast(f"Successfully loaded: {uploaded_file.name}")
+                st.toast(f"Loaded: {uploaded_file.name}")
             except Exception as e:
-                st.error(f"Read error: {e}")
+                st.error(f"Error loading file: {e}")
 
-    if st.button("🗑️ Clear All Cache"):
+    if st.button("🗑️ Clear Cache & Reset"):
         st.session_state.df = None
         st.session_state.messages = []
         st.rerun()
 
 # --- 3. Main Interface ---
-st.title("🤖 Data Cleaning Agent")
-st.caption("Powered by Gemini 2.5 Flash - Supporting deep logic and structured cleaning")
+st.title("🤖 AI Data Cleaning Agent")
+st.caption("Powered by Gemini 2.5 Flash - Intelligent Data Engineering for Research")
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.write(msg["content"])
-        if "code" in msg:
-            with st.expander("View AI-executed Python logic"):
-                st.code(msg["code"])
+if "df" in st.session_state and st.session_state.df is not None:
+    # Automatic Data Audit Report
+    with st.expander("📊 Real-time Data Quality Audit", expanded=True):
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Rows", len(st.session_state.df))
+        c2.metric("Missing Values", st.session_state.df.isnull().sum().sum())
+        c3.metric("Duplicate Rows", st.session_state.df.duplicated().sum())
+        st.dataframe(st.session_state.df.head(5))
 
-# --- 4. Core Interaction Logic ---
-if user_input := st.chat_input("Enter cleaning instructions (e.g., 'drop rows where email is null' or 'unify date format')..."):
-    if not has_api:
-        st.error("Please configure your API Key first.")
-    else:
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        with st.chat_message("user"):
-            st.write(user_input)
+    # Chat Interaction Logic
+    if user_input := st.chat_input("Enter cleaning instructions (e.g., 'Standardize dates' or 'Identify outliers')..."):
+        st.chat_message("user").write(user_input)
+
+        # Preparing detailed data context for the LLM
+        data_info = {
+            "columns": list(st.session_state.df.columns),
+            "sample_dict": st.session_state.df.head(3).to_dict(),
+            "dtypes": st.session_state.df.dtypes.astype(str).to_dict()
+        }
+        
+        # Comprehensive Engineering Prompt
+        prompt = f"""
+        You are a Professional Data Engineering Agent. 
+        Dataset Context: {data_info}
+        User Instruction: '''{user_input}'''
+
+        --- CAPABILITIES ---
+        1. AUDIT: Missing values, Outlier detection (Z-score/IQR), Redundancy checks.
+        2. CLEAN: Handle Nulls (mean/median/mode/drop), Text normalization (regex, strip, case), Encoding.
+        3. STANDARDIZE: Date unification (YYYY-MM-DD), Unit conversion, Column renaming.
+        4. FEATURE: Binning, One-hot encoding, Indicator columns.
+        5. REPORT: Output summary of statistical changes.
+
+        --- RULES ---
+        - IF the request is NOT about data processing/analysis, output ONLY: [REJECT]
+        - ALWAYS assign the final result to variable `df`.
+        - Use `pd.to_datetime(errors='coerce')` and `pd.to_numeric(errors='coerce')` for safety.
+        - OUTPUT ONLY PURE PYTHON CODE. NO MARKDOWN, NO EXPLANATIONS.
+        """
 
         with st.chat_message("assistant"):
-            with st.spinner("Gemini 2.5 is planning cleaning logic..."):
-                try:
-                    # Target model ID
-                    target_model = "models/gemini-2.5-flash"
-                    model = genai.GenerativeModel(target_model)
+            try:
+                # Using the latest 2026 model logic
+                model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                response = model.generate_content(prompt)
+                
+                # Cleaning potential markdown tags from response
+                clean_code = re.sub(r'```python|```', '', response.text).strip()
 
-                    if st.session_state.df is not None:
-                        buffer = io.StringIO()
-                        st.session_state.df.info(buf=buffer)
-                        data_info = f"Columns: {list(st.session_state.df.columns)}\nData Sample:\n{st.session_state.df.head(3).to_string()}"
-                    else:
-                        data_info = "No file loaded. Parse data from user input text if applicable."
+                if "[REJECT]" in clean_code:
+                    st.warning("⚠️ This instruction is outside the scope of data engineering.")
+                else:
+                    # Execution Environment
+                    exec_env = {
+                        'pd': pd, 
+                        'np': np, 
+                        're': re, 
+                        'io': io,
+                        'df': st.session_state.df.copy()
+                    }
+                    
+                    # Execute AI-generated script
+                    exec(clean_code, {}, exec_env)
+                    
+                    # Update state with processed data
+                    st.session_state.df = exec_env['df']
+                    st.success("✅ Task Executed Successfully")
+                    st.dataframe(st.session_state.df.head(10))
+                    
+                    with st.expander("View Execution Logic"):
+                        st.code(clean_code)
+            except Exception as e:
+                st.error(f"Execution Error: {e}")
 
-                    prompt = f"""
-                    You are a Professional Data Engineering Agent. 
-                    Dataset Summary: {data_info}
-                    User Request: '''{user_input}'''
-
-                    --- TASK CATEGORIES ---
-                    You specialize in:
-                    1. AUDIT: Statistical summaries, missing value/outlier detection (Z-score, IQR), redundancy checks.
-                    2. CLEAN: Handling nulls (mean/median/mode/drop), text normalization (HTML, special chars, casing), inconsistent encoding.
-                    3. STANDARDIZE: Date/Time unification (YYYY-MM-DD), unit conversion, column renaming.
-                    4. FEATURE: Binning, one-hot encoding, creating missing-indicators.
-                    5. REPORT: Summarizing changes and reporting data quality metrics.
-
-                    --- SYSTEM RULES ---
-                    - IF the request is NOT about data cleaning, analysis, or transformation, output ONLY the string: [REJECT].
-                    - Use `pd.to_datetime(errors='coerce')` for dates and `pd.to_numeric(errors='coerce')` for numbers.
-                    - Ensure the final result is assigned to the variable `df`.
-                    - Output ONLY pure Python code. No preamble, no explanation.
-
-                    --- EXECUTION LOGIC ---
-                    If the request is valid, generate efficient, error-resistant Python code to fulfill it.
-                    """
-                   
-                    response = model.generate_content(prompt)
-                    clean_code = re.sub(r'```python|```', '', response.text).strip()
-
-
-                    # Generate content using Gemini 2.5
-                    response = model.generate_content(prompt)
-                    clean_code = re.sub(r'```python|```', '', response.text).strip()
-
-                    if "[REJECT]" in clean_code:
-                        st.warning("Instruction is outside the scope of data processing.")
-                    else:
-                        # Prepare execution environment
-                        env = {'pd': pd, 'io': io, 're': re}
-                        if st.session_state.df is not None:
-                            env['df'] = st.session_state.df.copy()
-
-                        # Execute AI-generated script
-                        exec(clean_code, env)
-
-                        if 'df' in env:
-                            st.session_state.df = env['df']
-                            st.write(f"✅ Execution Successful! (Model: {target_model})")
-                            st.dataframe(st.session_state.df.head(10))
-
-                            st.session_state.messages.append({
-                                "role": "assistant",
-                                "content": "Cleaning task completed.",
-                                "code": clean_code
-                            })
-                except Exception as e:
-                    st.error(f"Runtime Error: {e}")
-
-# --- 5. Export ---
-if st.session_state.df is not None:
+    # --- 4. Export Section ---
     st.divider()
-    cols = st.columns([2, 1])
-    with cols[0]:
-        fmt = st.selectbox("Select export format:", ["CSV", "Excel", "JSON"])
+    export_col1, export_col2 = st.columns([3, 1])
+    with export_col1:
+        export_format = st.selectbox("Select Export Format:", ["CSV", "Excel", "JSON"])
 
-    buf = io.BytesIO()
-    if fmt == "CSV":
-        data = st.session_state.df.to_csv(index=False).encode('utf-8')
-        mime, ext = "text/csv", "csv"
-    elif fmt == "Excel":
-        with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+    # Prepare download data
+    if export_format == "CSV":
+        export_data = st.session_state.df.to_csv(index=False).encode('utf-8')
+        file_ext = "csv"
+        mime_type = "text/csv"
+    elif export_format == "Excel":
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             st.session_state.df.to_excel(writer, index=False)
-        data, mime, ext = buf.getvalue(), "application/vnd.ms-excel", "xlsx"
+        export_data = buffer.getvalue()
+        file_ext = "xlsx"
+        mime_type = "application/vnd.ms-excel"
     else:
-        data = st.session_state.df.to_json(orient='records').encode('utf-8')
-        mime, ext = "application/json", "json"
+        export_data = st.session_state.df.to_json(orient='records').encode('utf-8')
+        file_ext = "json"
+        mime_type = "application/json"
 
-    with cols[1]:
-        st.write("")
-        st.write("")
-        st.download_button(f"📥 Download Cleaned File", data=data, file_name=f"cleaned_data.{ext}", mime=mime)
+    with export_col2:
+        st.download_button(
+            label=f"📥 Download .{file_ext}",
+            data=export_data,
+            file_name=f"cleaned_data.{file_ext}",
+            mime=mime_type
+        )
+else:
+    st.info("👋 Please upload a dataset in the sidebar to begin.")
