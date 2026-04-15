@@ -88,8 +88,8 @@ if "df" in st.session_state and st.session_state.df is not None:
         with st.chat_message("assistant"):
             try:
                 # Using the latest 2026 model logic
-                model = genai.GenerativeModel('models/gemini-1.5-flash')
-                response = model.generate_content(prompt)
+                target_model = "models/gemini-2.5-flash"
+                model = genai.GenerativeModel(target_model)
                 
                 # Cleaning potential markdown tags from response
                 clean_code = re.sub(r'```python|```', '', response.text).strip()
