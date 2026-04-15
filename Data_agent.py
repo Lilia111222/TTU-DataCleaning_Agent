@@ -66,7 +66,7 @@ if "df" in st.session_state and st.session_state.df is not None:
         }
         
         # Comprehensive Engineering Prompt
-prompt = f"""
+        prompt = f"""
         You are a Senior Data Engineering Agent. 
         Dataset Context: {data_info}
         User Instruction: '''{user_input}'''
