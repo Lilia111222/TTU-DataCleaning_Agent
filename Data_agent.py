@@ -84,15 +84,20 @@ if user_input := st.chat_input("Enter cleaning instructions (e.g., 'drop rows wh
                         data_info = "No file loaded. Parse data from user input text if applicable."
 
                     prompt = f"""
-                    You are a Python Data Scientist. 
-                    Data Background: {data_info}
-                    Instruction: '''{user_input}'''
+                    You are a Senior Data Scientist at Texas Tech University. 
+                    Background Data Info: {data_info}
+                    Target Instruction: '''{user_input}'''
 
-                    Rules:
-                    1. ONLY return pure Python code.
-                    2. NO markdown formatting (No ```python).
-                    3. Final result MUST be updated in the variable 'df'.
-                    4. Use libraries: pd, io, re.
+                    STRICT RULES FOR CODE GENERATION:
+                    1. DO NOT OVERWRITE valid existing data.
+                    2. For 'Date_Joined': 
+                       - Use `pd.to_datetime(df['Date_Joined'], errors='coerce', dayfirst=False)`
+                       - If that fails, try `pd.to_datetime(df['Date_Joined'].str.replace('.', '/', regex=False), errors='coerce')`
+                       - ONLY fill NaT (missing values) with '2026-01-01' AFTER attempting conversions.
+                    3. For 'Age': 
+                       - DO NOT drop rows unless specifically asked or if they are mathematically impossible (e.g., negative).
+                    4. If you use `dropna()`, ensure it doesn't accidentally wipe the whole table.
+                    5. Provide ONLY the Python code, NO conversational text.
                     """
 
                     # Generate content using Gemini 2.5
