@@ -87,7 +87,6 @@ prompt = f"""
         - ALWAYS assign the result back to `df`.
         - OUTPUT ONLY PURE PYTHON CODE. NO MARKDOWN, NO EXPLANATIONS.
         """
-
         with st.chat_message("assistant"):
             try:
                 # Using the latest 2026 model logic
