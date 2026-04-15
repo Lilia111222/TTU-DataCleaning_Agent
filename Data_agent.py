@@ -90,7 +90,7 @@ if "df" in st.session_state and st.session_state.df is not None:
                 # Using the latest 2026 model logic
                 target_model = "models/gemini-2.5-flash"
                 model = genai.GenerativeModel(target_model)
-                
+                response = model.generate_content(prompt)
                 # Cleaning potential markdown tags from response
                 clean_code = re.sub(r'```python|```', '', response.text).strip()
 
